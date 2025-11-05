@@ -1,0 +1,2 @@
+- The sandbox blocked Gradle from downloading or running the wrapper, so I still had to run the builds myself.
+- I had a few scratch files lying around, and the LLM couldn’t tell which were intentional, so tidying those was on me.

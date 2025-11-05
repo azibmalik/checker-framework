@@ -1,0 +1,2 @@
+- The LLM explained the signedness hierarchy in a way that made it clear where @BitPattern belongs, so I could add it without breaking anything else.
+- It also pointed me toward the tree annotator changes I needed, so bitwise operations kept the new annotation automatically.

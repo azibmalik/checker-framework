@@ -10,16 +10,17 @@ import org.checkerframework.framework.qual.TargetLocations;
 import org.checkerframework.framework.qual.TypeUseLocation;
 
 /**
- * The bottom type in the Signedness type system. Programmers should rarely write this type.
+ * The value is a bit pattern (not an arithmetic quantity). For example, the return value of {@code
+ * Double.doubleToLongBits} or a value used as a bitset.
  *
- * <p>This is the type of the {@code null} literal.
+ * <p>Bitwise operations ({@literal &, |, ^, ~}) and shifts ({@literal <<, >>, >>>}) are permitted.
+ * Arithmetic operations ({@literal +, -, *, /, %}) are forbidden.
  *
  * @checker_framework.manual #signedness-checker Signedness Checker
- * @checker_framework.manual #bottom-type the bottom type
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.TYPE_USE, ElementType.TYPE_PARAMETER})
 @TargetLocations({TypeUseLocation.EXPLICIT_LOWER_BOUND, TypeUseLocation.EXPLICIT_UPPER_BOUND})
-@SubtypeOf({SignedPositive.class, BitPattern.class})
-public @interface SignednessBottom {}
+@SubtypeOf(UnknownSignedness.class)
+public @interface BitPattern {}

@@ -6,9 +6,11 @@ import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.Tree;
+import com.sun.source.tree.UnaryTree;
 import javax.lang.model.element.ExecutableElement;
 import org.checkerframework.checker.interning.InterningVisitor;
 import org.checkerframework.checker.interning.qual.EqualsMethod;
+import org.checkerframework.checker.signedness.qual.BitPattern;
 import org.checkerframework.checker.signedness.qual.PolySigned;
 import org.checkerframework.checker.signedness.qual.Signed;
 import org.checkerframework.checker.signedness.qual.Unsigned;
@@ -54,6 +56,29 @@ public class SignednessVisitor extends BaseTypeVisitor<SignednessAnnotatedTypeFa
   }
 
   /**
+   * Returns true if an annotated type is annotated as {@link BitPattern}.
+   *
+   * @param type the annotated type to be checked
+   * @return true if the annotated type is annotated as {@link BitPattern}
+   */
+  private boolean hasBitPatternAnnotation(AnnotatedTypeMirror type) {
+    return type.hasPrimaryAnnotation(BitPattern.class);
+  }
+
+  private boolean isArithmeticBinaryOperator(Tree.Kind kind) {
+    switch (kind) {
+      case PLUS:
+      case MINUS:
+      case MULTIPLY:
+      case DIVIDE:
+      case REMAINDER:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  /**
    * Enforces the following rules on binary operations involving Unsigned and Signed types:
    *
    * <ul>
@@ -78,6 +103,18 @@ public class SignednessVisitor extends BaseTypeVisitor<SignednessAnnotatedTypeFa
     AnnotatedTypeMirror rightOpType = argTypes.second;
 
     Tree.Kind kind = tree.getKind();
+
+    boolean leftIsBitPattern = hasBitPatternAnnotation(leftOpType);
+    boolean rightIsBitPattern = hasBitPatternAnnotation(rightOpType);
+    boolean isStringConcat = kind == Tree.Kind.PLUS && TreeUtils.isStringConcatenation(tree);
+
+    if (isStringConcat) {
+      if (leftIsBitPattern || rightIsBitPattern) {
+        checker.reportError(tree, "bitpattern.concat");
+      }
+    } else if (isArithmeticBinaryOperator(kind) && (leftIsBitPattern || rightIsBitPattern)) {
+      checker.reportError(tree, "operation.bitpattern");
+    }
 
     switch (kind) {
       case DIVIDE:
@@ -135,9 +172,16 @@ public class SignednessVisitor extends BaseTypeVisitor<SignednessAnnotatedTypeFa
 
       case PLUS:
         if (TreeUtils.isStringConcatenation(tree)) {
-          if (!typeHierarchy.isSubtypeShallowEffective(leftOpType, atypeFactory.SIGNED)) {
+          if (leftIsBitPattern || rightIsBitPattern) {
+            break;
+          }
+          if (!leftIsBitPattern
+              && !rightIsBitPattern
+              && !typeHierarchy.isSubtypeShallowEffective(leftOpType, atypeFactory.SIGNED)) {
             checker.reportError(leftOp, "unsigned.concat");
-          } else if (!typeHierarchy.isSubtypeShallowEffective(rightOpType, atypeFactory.SIGNED)) {
+          } else if (!leftIsBitPattern
+              && !rightIsBitPattern
+              && !typeHierarchy.isSubtypeShallowEffective(rightOpType, atypeFactory.SIGNED)) {
             checker.reportError(rightOp, "unsigned.concat");
           }
           break;
@@ -253,6 +297,19 @@ public class SignednessVisitor extends BaseTypeVisitor<SignednessAnnotatedTypeFa
 
     Tree.Kind kind = tree.getKind();
 
+    boolean varIsBitPattern = hasBitPatternAnnotation(varType);
+    boolean exprIsBitPattern = hasBitPatternAnnotation(exprType);
+    boolean isStringConcat =
+        kind == Tree.Kind.PLUS_ASSIGNMENT && TreeUtils.isStringCompoundConcatenation(tree);
+
+    if (isStringConcat) {
+      if (varIsBitPattern || exprIsBitPattern) {
+        checker.reportError(tree, "bitpattern.concat");
+      }
+    } else if (isArithmeticCompoundOperator(kind) && (varIsBitPattern || exprIsBitPattern)) {
+      checker.reportError(tree, "compound.assignment.bitpattern");
+    }
+
     switch (kind) {
       case DIVIDE_ASSIGNMENT:
       case REMAINDER_ASSIGNMENT:
@@ -300,6 +357,9 @@ public class SignednessVisitor extends BaseTypeVisitor<SignednessAnnotatedTypeFa
 
       case PLUS_ASSIGNMENT:
         if (TreeUtils.isStringCompoundConcatenation(tree)) {
+          if (varIsBitPattern || exprIsBitPattern) {
+            break;
+          }
           if (!typeHierarchy.isSubtypeShallowEffective(exprType, atypeFactory.SIGNED)) {
             checker.reportError(tree.getExpression(), "unsigned.concat");
           }
@@ -337,6 +397,46 @@ public class SignednessVisitor extends BaseTypeVisitor<SignednessAnnotatedTypeFa
       return true;
     }
     return super.isTypeCastSafe(castType, exprType);
+  }
+
+  private boolean isArithmeticCompoundOperator(Tree.Kind kind) {
+    switch (kind) {
+      case PLUS_ASSIGNMENT:
+      case MINUS_ASSIGNMENT:
+      case MULTIPLY_ASSIGNMENT:
+      case DIVIDE_ASSIGNMENT:
+      case REMAINDER_ASSIGNMENT:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  @Override
+  public Void visitUnary(UnaryTree tree, Void p) {
+    AnnotatedTypeMirror exprType = atypeFactory.getAnnotatedType(tree.getExpression());
+    Tree.Kind kind = tree.getKind();
+
+    switch (kind) {
+      case PREFIX_INCREMENT:
+      case PREFIX_DECREMENT:
+      case POSTFIX_INCREMENT:
+      case POSTFIX_DECREMENT:
+        if (hasBitPatternAnnotation(exprType)) {
+          checker.reportError(tree, "unary.bitpattern");
+        }
+        break;
+      case UNARY_PLUS:
+      case UNARY_MINUS:
+        if (hasBitPatternAnnotation(exprType)) {
+          checker.reportError(tree, "operation.bitpattern");
+        }
+        break;
+      default:
+        break;
+    }
+
+    return super.visitUnary(tree, p);
   }
 
   @Override
